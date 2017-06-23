@@ -126,7 +126,9 @@ if (EXAMPLES)
 
     if (CPP_BINDING)
         add_executable (helloworld examples/helloworld.cpp)
+        add_executable (basic_auth examples/basic_auth.cpp)
         target_link_libraries (helloworld  mongoose)
+        target_link_libraries (basic_auth  mongoose)
 
         add_executable (cpp examples/main.cpp)
         target_link_libraries (cpp  mongoose)
