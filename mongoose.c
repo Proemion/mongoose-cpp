@@ -234,6 +234,7 @@ enum {
 #ifndef NO_FILESYSTEM
   ACCESS_LOG_FILE, AUTH_DOMAIN, CGI_INTERPRETER,
   CGI_PATTERN, DAV_AUTH_FILE, DOCUMENT_ROOT, ENABLE_DIRECTORY_LISTING,
+  BASIC_AUTH_USERNAME, BASIC_AUTH_PASSWORD,
 #endif
   EXTRA_MIME_TYPES,
 #ifndef NO_FILESYSTEM
@@ -263,6 +264,8 @@ static const char *static_config_options[] = {
   "dav_auth_file", NULL,
   "document_root",  NULL,
   "enable_directory_listing", "yes",
+  "basic_auth_username", NULL,
+  "basic_auth_password", NULL,
 #endif
   "extra_mime_types", NULL,
 #ifndef NO_FILESYSTEM
@@ -1623,6 +1626,32 @@ static int is_big_endian(void) {
   static const int n = 1;
   return ((char *) &n)[0] == 0;
 }
+
+static void base64_encode(const unsigned char *src, int src_len, char *dst) {
+  static const char *b64 =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  int i, j, a, b, c;
+
+  for (i = j = 0; i < src_len; i += 3) {
+    a = src[i];
+    b = i + 1 >= src_len ? 0 : src[i + 1];
+    c = i + 2 >= src_len ? 0 : src[i + 2];
+
+    dst[j++] = b64[a >> 2];
+    dst[j++] = b64[((a & 3) << 4) | (b >> 4)];
+    if (i + 1 < src_len) {
+      dst[j++] = b64[(b & 15) << 2 | (c >> 6)];
+    }
+    if (i + 2 < src_len) {
+      dst[j++] = b64[c & 63];
+    }
+  }
+  while (j % 4 != 0) {
+    dst[j++] = '=';
+  }
+  dst[j++] = '\0';
+}
+
 #endif
 
 #ifndef NO_WEBSOCKET
@@ -1754,31 +1783,6 @@ static void SHA1Final(unsigned char digest[20], SHA1_CTX* context) {
   memset(&finalcount, '\0', sizeof(finalcount));
 }
 // END OF SHA1 CODE
-
-static void base64_encode(const unsigned char *src, int src_len, char *dst) {
-  static const char *b64 =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  int i, j, a, b, c;
-
-  for (i = j = 0; i < src_len; i += 3) {
-    a = src[i];
-    b = i + 1 >= src_len ? 0 : src[i + 1];
-    c = i + 2 >= src_len ? 0 : src[i + 2];
-
-    dst[j++] = b64[a >> 2];
-    dst[j++] = b64[((a & 3) << 4) | (b >> 4)];
-    if (i + 1 < src_len) {
-      dst[j++] = b64[(b & 15) << 2 | (c >> 6)];
-    }
-    if (i + 2 < src_len) {
-      dst[j++] = b64[c & 63];
-    }
-  }
-  while (j % 4 != 0) {
-    dst[j++] = '=';
-  }
-  dst[j++] = '\0';
-}
 
 static void send_websocket_handshake(struct mg_connection *conn,
                                      const char *key) {
@@ -2671,6 +2675,15 @@ void mg_send_digest_auth_request(struct mg_connection *c) {
             (unsigned long) time(NULL));
 }
 
+void mg_send_basic_auth_request(struct mg_connection *c) {
+  struct connection *conn = (struct connection *) c;
+  c->status_code = 401;
+  mg_printf(c,
+            "HTTP/1.1 401 Unauthorized\r\n"
+            "WWW-Authenticate: Basic realm=\"%s\"\r\n\r\n",
+            conn->server->config_options[AUTH_DOMAIN]);
+}
+
 // Use the global passwords file, if specified by auth_gpass option,
 // or search for .htpasswd in the requested directory.
 static FILE *open_auth_file(struct connection *conn, const char *path) {
@@ -2970,6 +2983,40 @@ int mg_authorize_digest(struct mg_connection *c, FILE *fp) {
   return 0;
 }
 
+//This is the first check for a basic access to our server, even before handlers are hit.
+static int is_authorized_for_basic_access(struct mg_connection *c) {
+  struct connection *conn = (struct connection *) c;
+  const char *hdr;
+  const char *username = conn->server->config_options[BASIC_AUTH_USERNAME];
+  const char *password = conn->server->config_options[BASIC_AUTH_PASSWORD];
+
+  if (c == NULL) return 0;
+
+  //If either username/password are null, it means everyone is allowed
+  if(username == NULL || password == NULL)
+    return 1;
+
+  //Else check if the basic auth hash received is the same as the one we have/get
+  //Get a string containing username:password
+  char username_password[1024];
+  snprintf(username_password, sizeof(username_password),
+           "%s:%s",
+           username, password);
+
+  char basic_auth_hash[1024] = {0};
+  base64_encode(username_password, strlen(username_password), basic_auth_hash);
+//   printf("hash: %s (%d)\n", basic_auth_hash, strlen(basic_auth_hash));
+
+  if ((hdr = mg_get_header(c, "Authorization")) == NULL ||
+      mg_strncasecmp(hdr, "Basic ", 6) != 0) return 0;
+
+  char tmp_buffer[1024] = {0};
+  char received_hash[1024] = {0};
+  sscanf(hdr, "%s %s", tmp_buffer, received_hash);
+//   printf("received_hash: %s (%d)\n", received_hash, strlen(received_hash));
+
+  return strcmp(basic_auth_hash, received_hash) == 0;
+}
 
 // Return 1 if request is authorised, 0 otherwise.
 static int is_authorized(struct connection *conn, const char *path) {
@@ -3324,6 +3371,14 @@ static void open_local_endpoint(struct connection *conn) {
 #endif
 
   conn->mg_conn.content_len = cl_hdr == NULL ? 0 : (int) to64(cl_hdr);
+
+#ifndef NO_AUTH
+  if (!is_authorized_for_basic_access(&conn->mg_conn)) {
+    mg_send_basic_auth_request(&conn->mg_conn);
+    close_local_endpoint(conn);
+    return;
+  }
+#endif
 
   // Call URI handler if one is registered for this URI
   if (conn->server->do_i_handle == NULL || conn->server->do_i_handle(&conn->mg_conn)) {
