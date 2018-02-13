@@ -1,6 +1,7 @@
 #include <string.h>
 #include <string>
 #include <iostream>
+#include <fstream>
 #include <mongoose.h>
 #include "Request.h"
 
@@ -283,8 +284,9 @@ namespace Mongoose
       return output;
     }
 
-    void Request::handleUploads()
+    std::vector<string> Request::handleUploads(const string &upload_path)
     {
+        std::vector<std::string> result;
         char var_name[1024];
         char file_name[1024];
         const char *data;
@@ -292,7 +294,13 @@ namespace Mongoose
 
         if (mg_parse_multipart(connection->content, connection->content_len,
                     var_name, sizeof(var_name), file_name, sizeof(file_name), &data, &data_len)) {
-            uploadFiles.push_back(UploadFile(string(file_name), string(data, data_len)));
+
+            std::string file_path = upload_path + "/" + std::string(file_name);
+            std::ofstream outfile(file_path.c_str(), std::ofstream::binary);
+            outfile.write(data, data_len);
+            result.push_back(file_path);
         }
+
+        return result;
     }
 }

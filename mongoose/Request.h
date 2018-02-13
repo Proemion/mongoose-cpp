@@ -85,7 +85,7 @@ namespace Mongoose
              * @param string the target directory
              * @param path the posted file path
              */
-            void handleUploads();
+            std::vector<std::string> handleUploads(const std::string& upload_path);
 
             string getUrl();
             string getMethod();
@@ -96,11 +96,6 @@ namespace Mongoose
             bool match(string pattern);
 #endif
             bool readVariable(const char *data, string key, string &output);
-
-            /**
-             * Files uploaded in this request
-             */
-            vector<UploadFile> uploadFiles;
 
         protected:
             string method;
