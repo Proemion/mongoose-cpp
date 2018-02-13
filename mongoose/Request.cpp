@@ -99,11 +99,6 @@ namespace Mongoose
     {
         url = string(connection->uri);
         method = string(connection->request_method);
-
-        // Downloading POST data
-        ostringstream postData;
-        postData.write(connection->content, connection->content_len);
-        data = postData.str();
     }
 
     string Request::getUrl()
@@ -116,10 +111,13 @@ namespace Mongoose
         return method;
     }
 
-    string Request::getData()
-    {
-        return data;
-    }
+   string Request::getData()
+   {
+       //Downloading POST data
+       ostringstream postData;
+       postData.write(connection->content, connection->content_len);
+       return postData.str();
+   }
 
 #ifdef ENABLE_REGEX_URL
     smatch Request::getMatches()
@@ -155,18 +153,18 @@ namespace Mongoose
         return false;
     }
 
-    map<string, string> Request::getAllVariable()
-    {
-        map<string, string> mapKeyValue;
-        stringstream ss(data);
-        string param;
-        while(std::getline(ss, param, '&')){ //block for '&'
-            const string& key = param.substr(0, param.find('='));
-            const string& value = param.substr(param.find('=')+1);
-            mapKeyValue[key] = value; // insert map
-        }
-        return mapKeyValue;
-    }
+//    map<string, string> Request::getAllVariable()
+//    {
+//        map<string, string> mapKeyValue;
+//        stringstream ss(data);
+//        string param;
+//        while(std::getline(ss, param, '&')){ //block for '&'
+//            const string& key = param.substr(0, param.find('='));
+//            const string& value = param.substr(param.find('=')+1);
+//            mapKeyValue[key] = value; // insert map
+//        }
+//        return mapKeyValue;
+//    }
 
     bool Request::readVariable(const char *data, string key, string &output)
     {
@@ -206,7 +204,7 @@ namespace Mongoose
         }
 
         // Looking on the POST data
-        dataField = data.c_str();
+        dataField = connection->content;
         if (dataField != NULL && readVariable(dataField, key, output)) {
             return output;
         }

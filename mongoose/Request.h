@@ -45,7 +45,7 @@ namespace Mongoose
              * @brief getAllVariable
              * @return map<string, string> with all variables
              */
-            map<string, string> getAllVariable();
+//            map<string, string> getAllVariable();
 
             /**
              * Get the value for a certain variable
@@ -100,7 +100,6 @@ namespace Mongoose
         protected:
             string method;
             string url;
-            string data;
             struct mg_connection *connection;
     };
 }
