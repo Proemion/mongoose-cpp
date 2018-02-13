@@ -1,6 +1,7 @@
 #include <string.h>
 #include <string>
 #include <iostream>
+#include <fstream>
 #include <mongoose.h>
 #include "Request.h"
 
@@ -98,11 +99,6 @@ namespace Mongoose
     {
         url = string(connection->uri);
         method = string(connection->request_method);
-
-        // Downloading POST data
-        ostringstream postData;
-        postData.write(connection->content, connection->content_len);
-        data = postData.str();
     }
 
     string Request::getUrl()
@@ -115,10 +111,13 @@ namespace Mongoose
         return method;
     }
 
-    string Request::getData()
-    {
-        return data;
-    }
+   string Request::getData()
+   {
+       //Downloading POST data
+       ostringstream postData;
+       postData.write(connection->content, connection->content_len);
+       return postData.str();
+   }
 
 #ifdef ENABLE_REGEX_URL
     smatch Request::getMatches()
@@ -154,18 +153,18 @@ namespace Mongoose
         return false;
     }
 
-    map<string, string> Request::getAllVariable()
-    {
-        map<string, string> mapKeyValue;
-        stringstream ss(data);
-        string param;
-        while(std::getline(ss, param, '&')){ //block for '&'
-            const string& key = param.substr(0, param.find('='));
-            const string& value = param.substr(param.find('=')+1);
-            mapKeyValue[key] = value; // insert map
-        }
-        return mapKeyValue;
-    }
+//    map<string, string> Request::getAllVariable()
+//    {
+//        map<string, string> mapKeyValue;
+//        stringstream ss(data);
+//        string param;
+//        while(std::getline(ss, param, '&')){ //block for '&'
+//            const string& key = param.substr(0, param.find('='));
+//            const string& value = param.substr(param.find('=')+1);
+//            mapKeyValue[key] = value; // insert map
+//        }
+//        return mapKeyValue;
+//    }
 
     bool Request::readVariable(const char *data, string key, string &output)
     {
@@ -205,7 +204,7 @@ namespace Mongoose
         }
 
         // Looking on the POST data
-        dataField = data.c_str();
+        dataField = connection->content;
         if (dataField != NULL && readVariable(dataField, key, output)) {
             return output;
         }
@@ -283,8 +282,9 @@ namespace Mongoose
       return output;
     }
 
-    void Request::handleUploads()
+    std::vector<string> Request::handleUploads(const string &upload_path)
     {
+        std::vector<std::string> result;
         char var_name[1024];
         char file_name[1024];
         const char *data;
@@ -292,7 +292,13 @@ namespace Mongoose
 
         if (mg_parse_multipart(connection->content, connection->content_len,
                     var_name, sizeof(var_name), file_name, sizeof(file_name), &data, &data_len)) {
-            uploadFiles.push_back(UploadFile(string(file_name), string(data, data_len)));
+
+            std::string file_path = upload_path + "/" + std::string(file_name);
+            std::ofstream outfile(file_path.c_str(), std::ofstream::binary);
+            outfile.write(data, data_len);
+            result.push_back(file_path);
         }
+
+        return result;
     }
 }

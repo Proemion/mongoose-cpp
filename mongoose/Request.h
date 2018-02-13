@@ -45,7 +45,7 @@ namespace Mongoose
              * @brief getAllVariable
              * @return map<string, string> with all variables
              */
-            map<string, string> getAllVariable();
+//            map<string, string> getAllVariable();
 
             /**
              * Get the value for a certain variable
@@ -85,7 +85,7 @@ namespace Mongoose
              * @param string the target directory
              * @param path the posted file path
              */
-            void handleUploads();
+            std::vector<std::string> handleUploads(const std::string& upload_path);
 
             string getUrl();
             string getMethod();
@@ -97,15 +97,9 @@ namespace Mongoose
 #endif
             bool readVariable(const char *data, string key, string &output);
 
-            /**
-             * Files uploaded in this request
-             */
-            vector<UploadFile> uploadFiles;
-
         protected:
             string method;
             string url;
-            string data;
             struct mg_connection *connection;
     };
 }
