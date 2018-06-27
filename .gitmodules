@@ -1,0 +1,3 @@
+[submodule "mongoose"]
+	path = vendor/mongoose
+	url = https://github.com/saidinesh5/mongoose/
